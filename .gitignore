@@ -1,0 +1,7 @@
+.venv/
+
+# Dataset image folders
+dataset-nih/images-224/
+dataset-pne/train/
+dataset-pne/val/
+dataset-pne/test/
