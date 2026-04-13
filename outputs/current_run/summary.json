@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-04-11T19:14:03.765452",
-  "algorithm": "adaptive_fedavg",
+  "timestamp": "2026-04-13T21:46:44.729140",
+  "algorithm": "fedavg",
   "dataset": "pne",
   "config": {
     "data_dir": "D:\\BTP\\dataset-pne",
@@ -15,15 +15,15 @@
     "device": "cuda"
   },
   "final_metrics": {
-    "accuracy": 0.7670103092783506,
-    "f1": 0.8150572831423896,
-    "auc": 0.9461981135287908,
-    "precision": 0.6916666666666667,
-    "recall": 0.9920318725099602,
-    "specificity": 0.5256410256410257,
-    "balanced_accuracy": 0.7588364490754929
+    "accuracy": 0.7298969072164948,
+    "f1": 0.7923930269413629,
+    "auc": 0.9469472537201622,
+    "precision": 0.6578947368421053,
+    "recall": 0.9960159362549801,
+    "specificity": 0.4444444444444444,
+    "balanced_accuracy": 0.7202301903497123
   },
-  "best_global_accuracy": 0.8309278350515464,
-  "best_global_f1": 0.8551236749116607,
-  "best_global_auc": 0.9466918650185583
+  "best_global_accuracy": 0.8288659793814434,
+  "best_global_f1": 0.8536155202821869,
+  "best_global_auc": 0.9469472537201622
 }
