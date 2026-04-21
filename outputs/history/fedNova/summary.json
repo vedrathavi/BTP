@@ -1,0 +1,27 @@
+﻿{
+    "timestamp":  "2026-04-15T00:22:47.9243153+05:30",
+    "algorithm":  "fedNova",
+    "dataset":  "covid",
+    "config":  {
+                   "data_dir":  "COVID-19_Radiography_Dataset",
+                   "num_clients":  5,
+                   "num_rounds":  15,
+                   "local_epochs":  5,
+                   "batch_size":  16,
+                   "lr":  0.001,
+                   "weight_decay":  null,
+                   "image_size":  128,
+                   "seed":  42,
+                   "device":  "cuda"
+               },
+    "final_metrics":  {
+                          "accuracy":  0.8462,
+                          "f1":  0.8461,
+                          "auc":  0.9664,
+                          "precision":  0.8462,
+                          "recall":  0.8462
+                      },
+    "best_global_accuracy":  0.8462,
+    "best_global_f1":  0.8468,
+    "best_global_auc":  0.9664
+}

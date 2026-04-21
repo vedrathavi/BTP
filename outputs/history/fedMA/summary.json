@@ -1,0 +1,25 @@
+﻿{
+    "timestamp":  "2026-04-12T00:22:47.9868835+05:30",
+    "algorithm":  "fedMA",
+    "dataset":  "pne",
+    "config":  {
+                   "data_dir":  "D:\\BTP\\dataset-pne",
+                   "num_clients":  4,
+                   "num_rounds":  20,
+                   "local_epochs":  5,
+                   "batch_size":  32,
+                   "lr":  0.0002,
+                   "weight_decay":  0.0001,
+                   "image_size":  224,
+                   "seed":  42,
+                   "device":  "cuda"
+               },
+    "final_metrics":  {
+                          "accuracy":  0.7361,
+                          "f1":  0.7117,
+                          "auc":  0.8429
+                      },
+    "best_global_accuracy":  0.7361,
+    "best_global_f1":  0.7117,
+    "best_global_auc":  0.918
+}

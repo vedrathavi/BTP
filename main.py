@@ -20,6 +20,9 @@ from tqdm import tqdm
 
 from algorithms.adaptive_fedavg import aggregate as adaptive_fedavg_aggregate
 from algorithms.fedavg import aggregate as fedavg_aggregate
+from algorithms.fednova import aggregate as fednova_aggregate
+from algorithms.fedma import aggregate as fedma_aggregate
+from algorithms.krum import aggregate as krum_aggregate
 from datasets.nih import load_data as load_nih_data
 from datasets.pne import load_data as load_pne_data
 
@@ -68,7 +71,7 @@ def parse_args():
         "--algorithm",
         type=str,
         default="",
-        choices=["", "fedavg", "adaptive_fedavg"],
+        choices=["", "fedavg", "adaptive_fedavg", "fednova", "krum", "fedma"],
         help="Optional non-interactive algorithm selection",
     )
     parser.add_argument(
@@ -219,7 +222,7 @@ def local_train(
         scheduler.step()
 
     avg_loss = running_loss / max(total_batches, 1)
-    return {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}, avg_loss
+    return {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}, avg_loss, total_batches
 
 
 @torch.no_grad()
@@ -400,6 +403,9 @@ def run():
     algorithm_options = [
         ("fedavg", "FedAvg"),
         ("adaptive_fedavg", "Adaptive FedAvg"),
+        ("fednova", "FedNova"),
+        ("krum", "Krum"),
+        ("fedma", "FedMA"),
     ]
     dataset_options = [
         ("nih", "dataset-nih"),
@@ -488,6 +494,7 @@ def run():
         local_weights = []
         local_sizes = []
         local_performances = []
+        local_steps = []
 
         prev_global_cpu = {k: v.detach().cpu().clone() for k, v in global_weights.items()}
 
@@ -506,7 +513,7 @@ def run():
             local_model = create_model(num_outputs=num_outputs).to(device)
             local_model.load_state_dict(global_weights)
 
-            updated_weights, train_loss = local_train(
+            updated_weights, train_loss, train_steps = local_train(
                 local_model,
                 train_loader,
                 device,
@@ -524,6 +531,7 @@ def run():
             local_weights.append(updated_weights)
             local_sizes.append(len(client_indices))
             local_performances.append(local_perf)
+            local_steps.append(train_steps)
 
             client_test_acc_history[cid][-1] = local_acc
 
@@ -566,6 +574,16 @@ def run():
 
         if selected_algorithm == "fedavg":
             new_global_cpu, details = fedavg_aggregate(aggregation_weights, aggregation_sizes)
+        elif selected_algorithm == "fednova":
+            new_global_cpu, details = fednova_aggregate(
+                global_weights=global_weights,
+                local_weights=aggregation_weights,
+                local_steps=local_steps,
+            )
+        elif selected_algorithm == "fedma":
+            new_global_cpu, details = fedma_aggregate(aggregation_weights, aggregation_sizes)
+        elif selected_algorithm == "krum":
+            new_global_cpu, details = krum_aggregate(aggregation_weights, aggregation_sizes)
         else:
             new_global_cpu, details = adaptive_fedavg_aggregate(
                 local_weights=aggregation_weights,
