@@ -7,6 +7,7 @@ from scipy.optimize import linear_sum_assignment
 
 
 def _init_aggregated_state(reference_state):
+    """Build an aggregation buffer while preserving non-floating state entries."""
     aggregated = {}
     for key, tensor in reference_state.items():
         if torch.is_floating_point(tensor):
@@ -26,6 +27,7 @@ def aggregate(local_weights, local_sizes):
     Returns:
         (new_global_state_dict, details)
     """
+    # FedMA matching here is size-agnostic; keep argument only for API compatibility.
     del local_sizes
 
     if not local_weights:
@@ -34,6 +36,7 @@ def aggregate(local_weights, local_sizes):
     num_clients = len(local_weights)
     new_global = _init_aggregated_state(local_weights[0])
 
+    # Aggregate each parameter tensor, with filter alignment for conv kernels.
     for key in new_global.keys():
         ref_tensor = local_weights[0][key]
 
@@ -42,6 +45,7 @@ def aggregate(local_weights, local_sizes):
 
         # Apply Hungarian matching only on convolution kernels.
         if key.endswith("weight") and ref_tensor.ndim == 4:
+            # Use client 0 as anchor; align other clients to this filter ordering.
             base = local_weights[0][key]
             base_flat = base.reshape(base.size(0), -1)
             aligned = [base]
@@ -60,6 +64,7 @@ def aggregate(local_weights, local_sizes):
                 col_ind = torch.as_tensor(col_ind, device=target.device, dtype=torch.long)
                 aligned.append(target.index_select(0, col_ind))
 
+            # Average aligned kernels so semantically similar filters are merged.
             new_global[key] = torch.mean(torch.stack(aligned, dim=0), dim=0)
         else:
             tensors = [state_dict[key] for state_dict in local_weights]

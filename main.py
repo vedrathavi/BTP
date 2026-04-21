@@ -57,6 +57,13 @@ PIN_MEMORY = bool(torch.cuda.is_available())
 
 
 def parse_args():
+    """Parse CLI options for federated training configuration.
+
+    Why this exists:
+        Centralizes experiment knobs so runs are reproducible and easy to script.
+    How it helps:
+        Allows both interactive menu mode and non-interactive automation.
+    """
     parser = argparse.ArgumentParser(description="Federated Pneumonia Training (menu based)")
     parser.add_argument("--data-dir", type=str, default="dataset", help="Dataset root path")
     parser.add_argument("--num-clients", type=int, default=4, help="Number of clients")
@@ -85,6 +92,13 @@ def parse_args():
 
 
 def set_seed(seed: int):
+    """Set seeds across Python, NumPy, and PyTorch for reproducible behavior.
+
+    Why this exists:
+        Federated experiments are sensitive to random initialization and data shuffling.
+    How it helps:
+        Keeps results comparable across repeated runs and algorithm choices.
+    """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -92,6 +106,13 @@ def set_seed(seed: int):
 
 
 def archive_current_run():
+    """Move previous artifacts from current_run into a timestamped history folder.
+
+    Why this exists:
+        Prevents accidental overwriting of outputs when starting a new experiment.
+    How it helps:
+        Preserves full run history for comparison and reporting.
+    """
     os.makedirs(OUTPUTS_ROOT, exist_ok=True)
     os.makedirs(HISTORY_DIR, exist_ok=True)
 
@@ -113,12 +134,26 @@ def archive_current_run():
 
 
 def ensure_run_dirs():
+    """Create output directories required by the current experiment run.
+
+    Why this exists:
+        Plot/log writers expect these folders to exist before serialization.
+    How it helps:
+        Avoids runtime file-system errors during metric and figure export.
+    """
     os.makedirs(CURRENT_RUN_DIR, exist_ok=True)
     os.makedirs(PLOTS_DIR, exist_ok=True)
     os.makedirs(LOGS_DIR, exist_ok=True)
 
 
 def choose_menu(title, options):
+    """Prompt the user with a simple numeric selection menu.
+
+    Why this exists:
+        Supports interactive operation when CLI flags are not provided.
+    How it helps:
+        Enforces valid inputs and maps choices to internal keys.
+    """
     print(f"\n{title}")
     for idx, (_, label) in enumerate(options, start=1):
         print(f"{idx}. {label}")
@@ -133,7 +168,15 @@ def choose_menu(title, options):
 
 
 class PneumoniaCNN(nn.Module):
+    """Compact CNN backbone used as the local/global model in all FL algorithms.
+
+    Why this exists:
+        Provides a lightweight architecture suitable for repeated client training.
+    How it helps:
+        Keeps communication and optimization manageable while extracting image features.
+    """
     def __init__(self, in_channels=3, num_outputs=1):
+        """Build convolutional feature extractor and output head."""
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
@@ -157,16 +200,31 @@ class PneumoniaCNN(nn.Module):
         self.classifier = nn.Sequential(nn.Flatten(), nn.Dropout(0.4), nn.Linear(256, num_outputs))
 
     def forward(self, x):
+        """Run a forward pass from image tensor to logits."""
         x = self.features(x)
         x = self.pool(x)
         return self.classifier(x)
 
 
 def create_model(num_outputs=1):
+    """Factory function for constructing the experiment model.
+
+    Why this exists:
+        Encapsulates model creation so callers do not depend on class details.
+    How it helps:
+        Makes it easy to swap architectures in one place later.
+    """
     return PneumoniaCNN(in_channels=3, num_outputs=num_outputs)
 
 
 def get_loader_from_indices(dataset, indices, batch_size, shuffle_train=False):
+    """Create a client-specific DataLoader from a subset of dataset indices.
+
+    Why this exists:
+        Each FL client trains on its own partition.
+    How it helps:
+        Reuses one base dataset object while exposing per-client mini-batches.
+    """
     ds = copy.copy(dataset)
     ds.samples = [dataset.samples[i] for i in indices]
     ds.targets = [dataset.targets[i] for i in indices]
@@ -183,9 +241,19 @@ def local_train(
     round_idx=None,
     client_idx=None,
 ):
+    """Train one client model locally and return updated weights with loss stats.
+
+    Why this exists:
+        FL requires isolated local optimization before server aggregation.
+    How it helps:
+        Produces client updates and simple diagnostics for each round.
+    """
     model.train()
+    # Adam handles noisy local gradients well in federated client optimization.
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    # Mild decay per epoch helps stabilize local updates across rounds.
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
+    # BCE with logits supports both binary and multi-label outputs.
     criterion = nn.BCEWithLogitsLoss()
 
     running_loss = 0.0
@@ -199,15 +267,18 @@ def local_train(
         epoch_batches = 0
         batch_bar = tqdm(dataloader, desc=f"{epoch_desc} e{epoch}/{epochs}", leave=False, dynamic_ncols=True)
         for imgs, ys in batch_bar:
+            # Non-blocking transfer improves throughput when pin_memory is enabled.
             imgs = imgs.to(device, non_blocking=PIN_MEMORY)
             ys = ys.float().to(device, non_blocking=PIN_MEMORY)
             if ys.ndim == 1:
+                # Ensure target shape matches [batch, 1] binary logits.
                 ys = ys.unsqueeze(1)
 
             optimizer.zero_grad()
             outputs = model(imgs)
             loss = criterion(outputs, ys)
             loss.backward()
+            # Clip gradients to reduce occasional unstable local client steps.
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
 
@@ -227,6 +298,13 @@ def local_train(
 
 @torch.no_grad()
 def evaluate_model(model, dataloader, device):
+    """Evaluate a model and compute task-appropriate classification metrics.
+
+    Why this exists:
+        The codebase supports both binary and multi-label datasets.
+    How it helps:
+        Returns a unified metrics dictionary used for logging, aggregation, and plots.
+    """
     model.eval()
     y_true = []
     y_prob = []
@@ -234,9 +312,11 @@ def evaluate_model(model, dataloader, device):
     for imgs, ys in dataloader:
         imgs = imgs.to(device, non_blocking=PIN_MEMORY)
         outputs = model(imgs)
+        # Convert logits to probabilities for thresholding and ROC/AUC metrics.
         probs = torch.sigmoid(outputs).cpu().numpy()
         ys_np = ys.numpy()
         if probs.ndim == 1:
+            # Normalize to 2D so binary and multi-label paths share downstream code.
             probs = probs[:, None]
         if ys_np.ndim == 1:
             ys_np = ys_np[:, None]
@@ -245,11 +325,13 @@ def evaluate_model(model, dataloader, device):
 
     y_true = np.concatenate(y_true, axis=0)
     y_prob = np.concatenate(y_prob, axis=0)
+    # Use a conservative threshold tuned for class imbalance in medical labels.
     y_pred = (y_prob >= EVAL_THRESHOLD).astype(int)
 
     is_multilabel = y_true.shape[1] > 1
 
     if is_multilabel:
+        # Macro averaging treats all diseases/classes equally despite imbalance.
         accuracy = float((y_true == y_pred).mean())
         precision, recall, f1, _ = precision_recall_fscore_support(
             y_true,
@@ -280,6 +362,7 @@ def evaluate_model(model, dataloader, device):
             average="binary",
             zero_division=0,
         )
+        # Specificity and balanced accuracy are important for skewed binary classes.
         specificity = tn / max(tn + fp, 1)
         balanced_accuracy = 0.5 * (recall + specificity)
 
@@ -311,10 +394,18 @@ def evaluate_model(model, dataloader, device):
 
 
 def compute_weight_drift(global_prev, global_new):
+    """Compute RMS L2 drift between consecutive global model states.
+
+    Why this exists:
+        Weight drift is a useful signal of optimization stability and convergence pace.
+    How it helps:
+        Adds an interpretable scalar trend to round-level diagnostics.
+    """
     sq_sum = 0.0
     numel = 0
     for k in global_prev.keys():
         if global_prev[k].dtype == torch.float32:
+            # Compare only floating trainable tensors; cast to float for stable math.
             diff = (global_new[k].cpu() - global_prev[k].cpu()).float()
             sq_sum += float(torch.sum(diff * diff).item())
             numel += diff.numel()
@@ -324,6 +415,13 @@ def compute_weight_drift(global_prev, global_new):
 
 
 def plot_roc_curve(y_true, y_prob, save_path):
+    """Plot and save a binary ROC curve for final global evaluation.
+
+    Why this exists:
+        Accuracy/F1 alone may hide threshold-independent discrimination quality.
+    How it helps:
+        Provides a visual and numeric AUC summary of classifier ranking ability.
+    """
     fpr, tpr, _ = roc_curve(y_true, y_prob)
     auc = roc_auc_score(y_true, y_prob)
     plt.figure(figsize=(7, 5))
@@ -340,6 +438,13 @@ def plot_roc_curve(y_true, y_prob, save_path):
 
 
 def plot_multilabel_roc_curve(y_true, y_prob, class_names, save_path):
+    """Plot per-class and micro-average ROC curves for multi-label outputs.
+
+    Why this exists:
+        NIH prediction quality differs by pathology frequency and difficulty.
+    How it helps:
+        Shows class-wise separability while also summarizing overall performance.
+    """
     y_true = np.asarray(y_true)
     y_prob = np.asarray(y_prob)
 
@@ -379,6 +484,13 @@ def plot_multilabel_roc_curve(y_true, y_prob, class_names, save_path):
 
 
 def plot_confusion_matrix(tn, fp, fn, tp, save_path, title):
+    """Render and save a binary confusion matrix heatmap.
+
+    Why this exists:
+        Binary medical tasks require direct inspection of false positives/negatives.
+    How it helps:
+        Makes error types explicit for model comparison and reporting.
+    """
     matrix = np.array([[tn, fp], [fn, tp]])
     plt.figure(figsize=(6.5, 5.5))
     plt.imshow(matrix, cmap="Blues")
@@ -397,6 +509,16 @@ def plot_confusion_matrix(tn, fp, fn, tp, save_path, title):
 
 
 def run():
+    """Execute one full federated learning experiment from setup to artifact export.
+
+    What this function does:
+        Handles menu/CLI selection, dataset loading, client training, server aggregation,
+        round-wise evaluation, and final plotting/logging.
+    Why it is used:
+        Acts as the orchestrator that ties algorithms, datasets, and reporting together.
+    How it helps:
+        Produces reproducible metrics and visual artifacts for comparing FL strategies.
+    """
     args = parse_args()
     set_seed(args.seed)
 
@@ -412,6 +534,7 @@ def run():
         ("pne", "dataset-pne"),
     ]
 
+    # CLI flags override interactive menus to support scripted experimentation.
     selected_algorithm = args.algorithm if args.algorithm else choose_menu("Select Algorithm:", algorithm_options)
     selected_dataset = args.dataset if args.dataset else choose_menu("Select Dataset:", dataset_options)
 
@@ -453,6 +576,7 @@ def run():
         seed=args.seed,
     )
 
+    # Defensive check that loader honored the requested federation topology.
     if len(client_splits) != args.num_clients:
         raise ValueError("Dataset loader returned an unexpected number of client splits")
 
@@ -461,6 +585,7 @@ def run():
 
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY)
     num_outputs = len(getattr(train_dataset, "classes", []))
+    # Output head width differs for multi-label NIH vs binary pneumonia setup.
     if selected_dataset == "nih":
         num_outputs = 14
     elif num_outputs <= 2:
@@ -485,6 +610,7 @@ def run():
         "min_client_weight": 1e-3,
     }
 
+    # Communication rounds: each round trains clients locally, then aggregates server-side.
     for rnd in range(1, args.num_rounds + 1):
         print(f"\n=== Round {rnd}/{args.num_rounds} ===")
 
@@ -498,6 +624,7 @@ def run():
 
         prev_global_cpu = {k: v.detach().cpu().clone() for k, v in global_weights.items()}
 
+        # Client loop: initialize from global weights, train locally, and report local metrics.
         for cid in tqdm(range(args.num_clients), desc=f"Round {rnd} clients", leave=False, dynamic_ncols=True):
             client_indices = client_splits[cid]
             if not client_indices:
@@ -572,6 +699,7 @@ def run():
         aggregation_sizes = local_sizes
         aggregation_performances = local_performances
 
+        # Server aggregation: choose one strategy to merge client updates.
         if selected_algorithm == "fedavg":
             new_global_cpu, details = fedavg_aggregate(aggregation_weights, aggregation_sizes)
         elif selected_algorithm == "fednova":
@@ -592,6 +720,7 @@ def run():
                 config=adaptive_config,
             )
 
+        # Backfill logging rows with the weights actually used by the server aggregator.
         selected_rows = [r for r in client_round_rows if r["round"] == rnd]
         for out_idx, client_idx in enumerate(active_clients):
             for row in selected_rows:
@@ -606,6 +735,7 @@ def run():
         drift_l2 = compute_weight_drift(prev_global_cpu, new_global_cpu)
         weight_drift_rows.append({"round": rnd, "global_weight_drift_l2": drift_l2})
 
+        # Evaluate the freshly updated global model for round-level tracking.
         global_metrics = evaluate_model(global_model, test_loader, device)
         global_round_rows.append(
             {
@@ -640,6 +770,7 @@ def run():
     if not global_round_rows:
         raise RuntimeError("Training produced no global rounds. Check dataset and split sizes.")
 
+    # Final evaluation snapshot used for summary and terminal visualizations.
     final_test_eval = evaluate_model(global_model, test_loader, device)
 
     global_df = pd.DataFrame(global_round_rows)
@@ -650,6 +781,7 @@ def run():
     client_df.to_csv(os.path.join(LOGS_DIR, "client_round_metrics.csv"), index=False)
     drift_df.to_csv(os.path.join(LOGS_DIR, "weight_drift.csv"), index=False)
 
+    # Structured summary makes downstream analysis and experiment comparison easier.
     summary = {
         "timestamp": datetime.now().isoformat(),
         "algorithm": selected_algorithm,
@@ -683,6 +815,7 @@ def run():
     with open(os.path.join(CURRENT_RUN_DIR, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
+    # Global metric trajectories across communication rounds.
     plt.figure(figsize=(8, 5))
     plt.plot(global_df["round"], global_df["global_accuracy"], marker="o", linewidth=2, label="Global Accuracy")
     plt.plot(global_df["round"], global_df["global_f1"], marker="s", linewidth=2, label="Global F1")
@@ -697,6 +830,7 @@ def run():
     plt.savefig(os.path.join(PLOTS_DIR, "global_metrics_vs_rounds.png"), dpi=150)
     plt.close()
 
+    # Model-drift trend helps interpret convergence behavior.
     plt.figure(figsize=(8, 5))
     plt.plot(drift_df["round"], drift_df["global_weight_drift_l2"], marker="o", linewidth=2)
     plt.xlabel("Communication Round")
@@ -707,6 +841,7 @@ def run():
     plt.savefig(os.path.join(PLOTS_DIR, "weight_drift_vs_rounds.png"), dpi=150)
     plt.close()
 
+    # Overlay local client accuracy with global accuracy to visualize synchronization effects.
     plt.figure(figsize=(10, 6))
     for cid in range(args.num_clients):
         client_series = [row["local_test_accuracy"] for row in client_round_rows if row["client"] == cid]

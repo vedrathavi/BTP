@@ -28,11 +28,25 @@ ALL_DISEASES = [
 
 
 def label_from_findings(findings: str) -> List[int]:
+    """Convert NIH pipe-separated findings text into a 14-dim multi-hot vector.
+
+    Why this exists:
+        The NIH CSV stores labels as text, but training requires numeric targets.
+    How it helps:
+        Produces a consistent class ordering used by model outputs and metrics.
+    """
     labels = [item.strip() for item in str(findings).split("|") if item.strip()]
     return [1 if disease in labels else 0 for disease in ALL_DISEASES]
 
 
 def _balanced_subsample_multilabel(samples: Sequence[Tuple[str, List[int]]], max_samples_per_class: int, seed: int) -> List[Tuple[str, List[int]]]:
+    """Create a class-balanced subset by capping per-class sampled indices.
+
+    Why this exists:
+        NIH labels are long-tailed; dominant classes can overwhelm local training.
+    How it helps:
+        Improves representation of rarer findings during federated optimization.
+    """
     class_indices = {i: [] for i in range(len(ALL_DISEASES))}
     for idx, (_, label_vec) in enumerate(samples):
         for class_idx, value in enumerate(label_vec):
@@ -50,6 +64,13 @@ def _balanced_subsample_multilabel(samples: Sequence[Tuple[str, List[int]]], max
 
 
 def _iid_split(num_samples: int, num_clients: int, seed: int) -> List[List[int]]:
+    """Split sample indices into approximately equal IID client partitions.
+
+    Why this exists:
+        Simulates federated clients while keeping baseline splits simple and reproducible.
+    How it helps:
+        Enables controlled comparison among aggregation algorithms.
+    """
     indices = list(range(num_samples))
     rng = random.Random(seed)
     rng.shuffle(indices)
@@ -63,6 +84,13 @@ def _iid_split(num_samples: int, num_clients: int, seed: int) -> List[List[int]]
 
 
 def _read_name_list(file_path: str) -> Optional[set]:
+    """Read file names from official NIH split text files.
+
+    Why this exists:
+        NIH provides train/test membership as plain text lists.
+    How it helps:
+        Filters metadata rows to the intended evaluation protocol.
+    """
     if not os.path.isfile(file_path):
         return None
 
@@ -75,6 +103,7 @@ class NIHMultiLabelDataset(Dataset):
     """Multi-label NIH chest X-ray dataset with 14 disease targets."""
 
     def __init__(self, image_root: str, csv_path: str, file_names: Optional[Sequence[str]] = None, transform=None):
+        """Load NIH image paths and multi-label targets from metadata CSV."""
         self.root = image_root
         self.csv_path = csv_path
         self.transform = transform
@@ -105,9 +134,11 @@ class NIHMultiLabelDataset(Dataset):
                 self.targets.append(target)
 
     def __len__(self):
+        """Return number of available samples."""
         return len(self.samples)
 
     def __getitem__(self, index):
+        """Read one image and return transformed tensor with float multi-label target."""
         image_path, target = self.samples[index]
         image = Image.open(image_path).convert("RGB")
         if self.transform is not None:
@@ -116,6 +147,13 @@ class NIHMultiLabelDataset(Dataset):
 
 
 def _resolve_roots(data_dir: str):
+    """Resolve NIH image and metadata locations from expected folder layouts.
+
+    Why this exists:
+        Local dataset extraction structures can vary.
+    How it helps:
+        Makes loading robust to common directory variants.
+    """
     image_candidates = [
         os.path.join(data_dir, "images-224", "images-224"),
         os.path.join(data_dir, "images-224"),
@@ -161,6 +199,7 @@ def load_data(
     train_dataset = NIHMultiLabelDataset(image_root=image_root, csv_path=csv_path, file_names=train_names, transform=train_transform)
     test_dataset = NIHMultiLabelDataset(image_root=image_root, csv_path=csv_path, file_names=test_names, transform=eval_transform)
 
+    # Apply class-balanced subsampling to reduce severe long-tail effects in training.
     train_dataset.samples = _balanced_subsample_multilabel(train_dataset.samples, max_samples_per_class=max_samples_per_class, seed=seed)
     train_dataset.targets = [label for _, label in train_dataset.samples]
 
