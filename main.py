@@ -23,6 +23,7 @@ from algorithms.fedavg import aggregate as fedavg_aggregate
 from algorithms.fednova import aggregate as fednova_aggregate
 from algorithms.fedma import aggregate as fedma_aggregate
 from algorithms.krum import aggregate as krum_aggregate
+from algorithms.median import aggregate as median_aggregate
 from datasets.nih import load_data as load_nih_data
 from datasets.pne import load_data as load_pne_data
 
@@ -78,7 +79,7 @@ def parse_args():
         "--algorithm",
         type=str,
         default="",
-        choices=["", "fedavg", "adaptive_fedavg", "fednova", "krum", "fedma"],
+        choices=["", "fedavg", "adaptive_fedavg", "fednova", "krum", "fedma", "median"],
         help="Optional non-interactive algorithm selection",
     )
     parser.add_argument(
@@ -528,6 +529,7 @@ def run():
         ("fednova", "FedNova"),
         ("krum", "Krum"),
         ("fedma", "FedMA"),
+        ("median", "Coordinate-wise Median"),
     ]
     dataset_options = [
         ("nih", "dataset-nih"),
@@ -712,6 +714,8 @@ def run():
             new_global_cpu, details = fedma_aggregate(aggregation_weights, aggregation_sizes)
         elif selected_algorithm == "krum":
             new_global_cpu, details = krum_aggregate(aggregation_weights, aggregation_sizes)
+        elif selected_algorithm == "median":
+            new_global_cpu, details = median_aggregate(aggregation_weights, aggregation_sizes)
         else:
             new_global_cpu, details = adaptive_fedavg_aggregate(
                 local_weights=aggregation_weights,
@@ -725,9 +729,12 @@ def run():
         for out_idx, client_idx in enumerate(active_clients):
             for row in selected_rows:
                 if row["client"] == client_idx:
-                    row["size_weight"] = details["size_weights"][out_idx]
-                    row["performance_weight"] = details["performance_weights"][out_idx]
-                    row["adaptive_weight"] = details["adaptive_weights"][out_idx]
+                    if details["size_weights"] is not None:
+                        row["size_weight"] = details["size_weights"][out_idx]
+                    if details["performance_weights"] is not None:
+                        row["performance_weight"] = details["performance_weights"][out_idx]
+                    if details["adaptive_weights"] is not None:
+                        row["adaptive_weight"] = details["adaptive_weights"][out_idx]
 
         global_weights = {k: v.to(device) for k, v in new_global_cpu.items()}
         global_model.load_state_dict(global_weights)
