@@ -49,6 +49,7 @@ CURRENT_RUN_DIR = os.path.join(OUTPUTS_ROOT, "current_run")
 HISTORY_DIR = os.path.join(OUTPUTS_ROOT, "history")
 PLOTS_DIR = os.path.join(CURRENT_RUN_DIR, "plots")
 LOGS_DIR = os.path.join(CURRENT_RUN_DIR, "logs")
+PREDICTIONS_DIR = os.path.join(CURRENT_RUN_DIR, "predictions")
 
 # Imbalance and aggregation safety controls
 EVAL_THRESHOLD = 0.25
@@ -145,6 +146,7 @@ def ensure_run_dirs():
     os.makedirs(CURRENT_RUN_DIR, exist_ok=True)
     os.makedirs(PLOTS_DIR, exist_ok=True)
     os.makedirs(LOGS_DIR, exist_ok=True)
+    os.makedirs(PREDICTIONS_DIR, exist_ok=True)
 
 
 def choose_menu(title, options):
@@ -744,6 +746,13 @@ def run():
 
         # Evaluate the freshly updated global model for round-level tracking.
         global_metrics = evaluate_model(global_model, test_loader, device)
+        np.savez_compressed(
+            os.path.join(PREDICTIONS_DIR, f"round_{rnd:02d}_global_predictions.npz"),
+            round=np.array(rnd, dtype=np.int64),
+            y_true=global_metrics["y_true"],
+            y_prob=global_metrics["y_prob"],
+            y_pred=(global_metrics["y_prob"] >= EVAL_THRESHOLD).astype(int),
+        )
         global_round_rows.append(
             {
                 "round": rnd,
@@ -779,6 +788,10 @@ def run():
 
     # Final evaluation snapshot used for summary and terminal visualizations.
     final_test_eval = evaluate_model(global_model, test_loader, device)
+    torch.save(
+        {key: value.detach().cpu().clone() for key, value in global_model.state_dict().items()},
+        os.path.join(CURRENT_RUN_DIR, "global_model_final.pt"),
+    )
 
     global_df = pd.DataFrame(global_round_rows)
     client_df = pd.DataFrame(client_round_rows)
