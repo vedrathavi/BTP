@@ -1,0 +1,12 @@
+Diagnostic threshold analysis only; official EVAL_THRESHOLD remains 0.25.
+
+Round 15 | samples=485 | AUC=0.940188
+  best f1: threshold=0.77, value=0.889749, accuracy=0.882474, precision=0.864662, recall=0.916335, sensitivity=0.916335, specificity=0.846154, f1=0.889749, balanced_accuracy=0.881244, TN=198, FP=36, FN=21, TP=230, AUC=0.940188
+  best balanced_accuracy: threshold=0.83, value=0.884828, accuracy=0.884536, precision=0.897959, recall=0.876494, sensitivity=0.876494, specificity=0.893162, f1=0.887097, balanced_accuracy=0.884828, TN=209, FP=25, FN=31, TP=220, AUC=0.940188
+  best specificity: threshold=0.95, value=0.935897, accuracy=0.855670, precision=0.928910, recall=0.780876, sensitivity=0.780876, specificity=0.935897, f1=0.848485, balanced_accuracy=0.858387, TN=219, FP=15, FN=55, TP=196, AUC=0.940188
+  best sensitivity: threshold=0.05, value=0.988048, accuracy=0.707216, precision=0.640827, recall=0.988048, sensitivity=0.988048, specificity=0.405983, f1=0.777429, balanced_accuracy=0.697015, TN=95, FP=139, FN=3, TP=248, AUC=0.940188
+Round 20 | samples=485 | AUC=0.946062
+  best f1: threshold=0.95, value=0.891473, accuracy=0.884536, precision=0.867925, recall=0.916335, sensitivity=0.916335, specificity=0.850427, f1=0.891473, balanced_accuracy=0.883381, TN=199, FP=35, FN=21, TP=230, AUC=0.946062
+  best balanced_accuracy: threshold=0.95, value=0.883381, accuracy=0.884536, precision=0.867925, recall=0.916335, sensitivity=0.916335, specificity=0.850427, f1=0.891473, balanced_accuracy=0.883381, TN=199, FP=35, FN=21, TP=230, AUC=0.946062
+  best specificity: threshold=0.95, value=0.850427, accuracy=0.884536, precision=0.867925, recall=0.916335, sensitivity=0.916335, specificity=0.850427, f1=0.891473, balanced_accuracy=0.883381, TN=199, FP=35, FN=21, TP=230, AUC=0.946062
+  best sensitivity: threshold=0.05, value=0.996016, accuracy=0.632990, precision=0.585480, recall=0.996016, sensitivity=0.996016, specificity=0.243590, f1=0.737463, balanced_accuracy=0.619803, TN=57, FP=177, FN=1, TP=250, AUC=0.946062
